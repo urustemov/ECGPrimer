@@ -7,6 +7,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -29,6 +32,23 @@ jobs:
       - name: Build EXE (with icon)
         run: |
           pyinstaller --noconsole --onefile --name ECG_Digitizer --icon icon.ico ecg_app.py
+
+      # --- BINARY FOR RELEASE ONLY (on tags) ---
+
+      - name: Zip EXE
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          powershell Compress-Archive -Path dist\ECG_Digitizer.exe -DestinationPath ECG_Digitizer_Windows.zip -Force
+
+      - name: Create Release and Upload Asset
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ECG_Digitizer_Windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- ARTIFACT (for logged-in users / debugging) ---
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
