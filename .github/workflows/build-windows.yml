@@ -1,11 +1,9 @@
 name: Build Windows EXE
 
 on:
-  workflow_dispatch:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -23,22 +21,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if (Test-Path "requirements.txt") {
-            pip install -r requirements.txt
-          } else {
-            pip install pyside6 numpy pandas matplotlib scipy pyinstaller
-          }
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-      # Сборка с иконкой, если icon.ico существует
       - name: Build EXE (with icon)
-        if: ${{ hashFiles('icon.ico') != '' }}
         run: |
-          pyinstaller --onefile --noconsole --name "ECG_Digitizer" --icon icon.ico ecg_app.py
+          pyinstaller --noconsole --onefile --name ECG_Digitizer --icon icon.ico ecg_app.py
 
       - name: Upload artifact
-  uses: actions/upload-artifact@v4
-  with:
-    name: ecg-app-windows
-    path: dist/*.exe
-
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecg-app-windows
+          path: dist/*.exe
 
