@@ -36,7 +36,9 @@ jobs:
           pyinstaller --onefile --noconsole --name "ECG_Digitizer" --icon icon.ico ecg_app.py
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ECG_Digitizer_Windows
-          path: dist/ECG_Digitizer.exe
+  uses: actions/upload-artifact@v4
+  with:
+    name: ecg-app-windows
+    path: dist/*.exe
+
+
