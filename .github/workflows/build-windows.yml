@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Desktop Apps (Windows + macOS)
 
 on:
   push:
@@ -7,13 +7,9 @@ on:
       - "v*"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -33,26 +29,41 @@ jobs:
         run: |
           pyinstaller --noconsole --onefile --name ECG_Digitizer --icon icon.ico ecg_app.py
 
-      # --- BINARY FOR RELEASE ONLY (on tags) ---
-
-      - name: Zip EXE
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          powershell Compress-Archive -Path dist\ECG_Digitizer.exe -DestinationPath ECG_Digitizer_Windows.zip -Force
-
-      - name: Create Release and Upload Asset
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ECG_Digitizer_Windows.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # --- ARTIFACT (for logged-in users / debugging) ---
-
-      - name: Upload artifact
+      - name: Upload artifact (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: ecg-app-windows
           path: dist/*.exe
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # На macOS удобнее собирать .app (onedir), потом zip
+      - name: Build .app
+        run: |
+          pyinstaller --windowed --onedir --name ECG_Digitizer ecg_app.py
+
+      - name: Zip .app
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent ECG_Digitizer.app ECG_Digitizer-macOS.zip
+
+      - name: Upload artifact (macOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecg-app-macos
+          path: dist/ECG_Digitizer-macOS.zip
