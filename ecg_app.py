@@ -23,7 +23,7 @@ GAIN_MM_PER_MV = 5.0          # 5 mm/mV  (not strictly needed in this calibratio
 class ECGApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ECG Digitizer: f(t), f'(t), f''(t)")
+        self.setWindowTitle("ECG Digitizer: f(t), f'(t), f''(t), f'''(t)")
 
         # Data holders
         self.img = None
@@ -44,7 +44,7 @@ class ECGApp(QMainWindow):
         self.btn_calx = QPushButton("Calibrate X (time)")
         self.btn_caly = QPushButton("Calibrate Y (mV)")
         self.btn_trace = QPushButton("Trace curve points")
-        self.btn_compute = QPushButton("Compute f(t), f', f''")
+        self.btn_compute = QPushButton("Compute f(t), f', f'', f'''")
         self.btn_export = QPushButton("Export CSV + PNG plots")
         self.btn_reset = QPushButton("Reset")
 
@@ -99,11 +99,13 @@ class ECGApp(QMainWindow):
         self.f = None
         self.f1 = None
         self.f2 = None
+        self.f3 = None
 
         # Separate figures for outputs
         self.fig_f = None
         self.fig_f1 = None
         self.fig_f2 = None
+        self.fig_f3 = None
 
         self.ax.clear()
         self.ax.set_title("Load image to start")
@@ -215,7 +217,7 @@ class ECGApp(QMainWindow):
                 return
             self.mode = "idle"
             self.btn_compute.setEnabled(True)
-            self.msg(f"Tracing finished: {len(self.curve_pts)} points. Click 'Compute f(t), f', f''.")
+            self.msg(f"Tracing finished: {len(self.curve_pts)} points. Click 'Compute f(t), f', f'', f'''.")
             self.canvas.setFocus()
 
     def px_to_data(self, px, py):
@@ -271,6 +273,7 @@ class ECGApp(QMainWindow):
             self.f = spl(t_grid)
             self.f1 = spl.derivative(1)(t_grid)
             self.f2 = spl.derivative(2)(t_grid)
+            self.f3 = spl.derivative(3)(t_grid)
 
             # Show f(t) in main canvas
             self.ax.clear()
@@ -283,7 +286,7 @@ class ECGApp(QMainWindow):
             self.canvas.draw()
             self.canvas.setFocus()
 
-            # Prepare separate figures for export (f, f', f'')
+            # Prepare separate figures for export (f, f', f'', f''')
             self.fig_f = Figure(figsize=(10, 4))
             ax1 = self.fig_f.add_subplot(111)
             ax1.plot(t, u, ".", markersize=3)
@@ -306,8 +309,15 @@ class ECGApp(QMainWindow):
             ax3.set_ylabel("d²U/dt²")
             ax3.set_title("f''(t)")
 
+            self.fig_f3 = Figure(figsize=(10, 4))
+            ax4 = self.fig_f3.add_subplot(111)
+            ax4.plot(t_grid, self.f3)
+            ax4.set_xlabel("t (s)")
+            ax4.set_ylabel("d³U/dt³")
+            ax4.set_title("f'''(t)")
+
             self.btn_export.setEnabled(True)
-            self.msg("Computed f(t), f'(t), f''(t). You can export CSV + PNG plots now.")
+            self.msg("Computed f(t), f'(t), f''(t), f'''(t). You can export CSV + PNG plots now.")
 
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
@@ -330,11 +340,12 @@ class ECGApp(QMainWindow):
         self.fig_f.savefig(f"{out_dir}/plot_f.png", dpi=200, bbox_inches="tight")
         self.fig_f1.savefig(f"{out_dir}/plot_f_prime.png", dpi=200, bbox_inches="tight")
         self.fig_f2.savefig(f"{out_dir}/plot_f_double_prime.png", dpi=200, bbox_inches="tight")
+        self.fig_f3.savefig(f"{out_dir}/plot_f_triple_prime.png", dpi=200, bbox_inches="tight")
 
         QMessageBox.information(
             self,
             "Export done",
-            f"Saved:\n{csv_path}\nplot_f.png\nplot_f_prime.png\nplot_f_double_prime.png"
+            f"Saved:\n{csv_path}\nplot_f.png\nplot_f_prime.png\nplot_f_double_prime.png\nplot_f_triple_prime.png"
         )
 
     def reset_all(self):
@@ -345,8 +356,8 @@ class ECGApp(QMainWindow):
         self.curve_pts = []
         self.mode = "idle"
 
-        self.t_sec = self.u_mV = self.t_grid = self.f = self.f1 = self.f2 = None
-        self.fig_f = self.fig_f1 = self.fig_f2 = None
+        self.t_sec = self.u_mV = self.t_grid = self.f = self.f1 = self.f2 = self.f3 = None
+        self.fig_f = self.fig_f1 = self.fig_f2 = self.fig_f3 = None
 
         self.ax.clear()
         self.ax.set_title("Load image to start")
