@@ -92,16 +92,243 @@ class ECGCanvas(FigureCanvas):
         self.ax = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.parent_window = parent_window
+
+        # Объекты для отображения координат под курсором
+        self._hover_ax = None
+        self._hover_marker = None
+        self._hover_annotation = None
+
         self.mpl_connect("button_press_event", self.on_click)
+        self.mpl_connect("motion_notify_event", self.on_mouse_move)
 
     def on_click(self, event):
         if self.parent_window is None:
             return
+
         if event.inaxes != self.ax:
             return
+
         if event.xdata is None or event.ydata is None:
             return
-        self.parent_window.handle_plot_click(event.xdata, event.ydata)
+
+        self.parent_window.handle_plot_click(
+            event.xdata,
+            event.ydata
+        )
+
+    def _hide_hover(self):
+        changed = False
+
+        if (
+            self._hover_marker is not None
+            and self._hover_marker.get_visible()
+        ):
+            self._hover_marker.set_visible(False)
+            changed = True
+
+        if (
+            self._hover_annotation is not None
+            and self._hover_annotation.get_visible()
+        ):
+            self._hover_annotation.set_visible(False)
+            changed = True
+
+        return changed
+
+    def _ensure_hover_artists(self, ax):
+        marker_is_valid = (
+            self._hover_ax is ax
+            and self._hover_marker is not None
+            and self._hover_marker in ax.lines
+        )
+
+        if marker_is_valid:
+            return
+
+        # Скрываем отметку на предыдущем графике
+        if self._hover_marker is not None:
+            self._hover_marker.set_visible(False)
+
+        if self._hover_annotation is not None:
+            self._hover_annotation.set_visible(False)
+
+        self._hover_ax = ax
+
+        # Точка на графике
+        self._hover_marker, = ax.plot(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+            markersize=5,
+            zorder=20,
+        )
+        self._hover_marker.set_gid("hover-helper")
+        self._hover_marker.set_visible(False)
+
+        # Текстовое окно с координатами
+        self._hover_annotation = ax.annotate(
+            "",
+            xy=(0, 0),
+            xytext=(12, 12),
+            textcoords="offset points",
+            bbox=dict(
+                boxstyle="round",
+                fc="white",
+                alpha=0.92
+            ),
+            arrowprops=dict(arrowstyle="->"),
+            fontsize=9,
+            zorder=21,
+        )
+        self._hover_annotation.set_visible(False)
+
+    def on_mouse_move(self, event):
+        ax = event.inaxes
+
+        # Курсор находится за пределами графика
+        if (
+            ax is None
+            or event.xdata is None
+            or event.ydata is None
+        ):
+            if self._hide_hover():
+                self.draw_idle()
+            return
+
+        # Не показываем координаты при обводке изображения ЭКГ
+        if ax.get_title() in {
+            "ECG image",
+            "No image loaded"
+        }:
+            if self._hide_hover():
+                self.draw_idle()
+            return
+
+        self._ensure_hover_artists(ax)
+
+        best = None
+
+        # Ищем линию, ближайшую к курсору
+        for line in ax.lines:
+            if (
+                line.get_gid() == "hover-helper"
+                or not line.get_visible()
+            ):
+                continue
+
+            xs = np.asarray(
+                line.get_xdata(),
+                dtype=float
+            )
+            ys = np.asarray(
+                line.get_ydata(),
+                dtype=float
+            )
+
+            valid = np.isfinite(xs) & np.isfinite(ys)
+            xs = xs[valid]
+            ys = ys[valid]
+
+            if len(xs) < 2:
+                continue
+
+            # Для np.interp координаты X должны идти по порядку
+            order = np.argsort(xs)
+            xs = xs[order]
+            ys = ys[order]
+
+            if (
+                event.xdata < xs[0]
+                or event.xdata > xs[-1]
+            ):
+                continue
+
+            x_value = float(event.xdata)
+
+            # Значение отображаемой линии точно в позиции курсора
+            y_value = float(
+                np.interp(x_value, xs, ys)
+            )
+
+            # Если на графике две линии, выбираем ближайшую
+            _, y_pixel = ax.transData.transform(
+                (x_value, y_value)
+            )
+            distance_pixel = abs(y_pixel - event.y)
+
+            if (
+                best is None
+                or distance_pixel < best[0]
+            ):
+                best = (
+                    distance_pixel,
+                    line,
+                    x_value,
+                    y_value,
+                )
+
+        if best is None:
+            if self._hide_hover():
+                self.draw_idle()
+            return
+
+        _, line, x_value, y_value = best
+
+        # Передвигаем точку на линию
+        self._hover_marker.set_data(
+            [x_value],
+            [y_value]
+        )
+        self._hover_marker.set_color(
+            line.get_color()
+        )
+        self._hover_marker.set_visible(True)
+
+        label = line.get_label()
+
+        if not label or label.startswith("_"):
+            label = ax.get_title() or "value"
+
+        # Определяем: абсолютный это график или нормализованный
+        figure_title = ""
+
+        if ax.figure._suptitle is not None:
+            figure_title = (
+                ax.figure
+                ._suptitle
+                .get_text()
+                .lower()
+            )
+
+        axis_x_label = ax.get_xlabel().lower()
+
+        is_normalized = (
+            "x_norm" in axis_x_label
+            or "normalized" in figure_title
+        )
+
+        x_name = "x_norm" if is_normalized else "t"
+        x_unit = "" if is_normalized else " s"
+
+        y_name = ax.get_ylabel() or "y"
+
+        # Обновляем текст подсказки
+        self._hover_annotation.xy = (
+            x_value,
+            y_value
+        )
+
+        self._hover_annotation.set_text(
+            f"{label}\n"
+            f"{x_name} = {x_value:.6f}{x_unit}\n"
+            f"{y_name} = {y_value:.6g}"
+        )
+
+        self._hover_annotation.set_visible(True)
+
+        # Перерисовываем без блокировки интерфейса
+        self.draw_idle()
 
 
 # --------------------------------------------------------------------------- #
